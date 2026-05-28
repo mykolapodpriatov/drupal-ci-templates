@@ -1,0 +1,207 @@
+---
+# Full Drupal pipeline for GitLab CI.
+#
+# Mirrors github-actions/ci-full.yml: lint -> static -> test -> security -> deploy.
+# Uses official PHP images and a MariaDB service. Parallel matrix on PHP versions.
+
+stages:
+  - lint
+  - static
+  - test
+  - security
+  - deploy
+
+variables:
+  COMPOSER_NO_INTERACTION: "1"
+  COMPOSER_MEMORY_LIMIT: "-1"
+  COMPOSER_CACHE_DIR: "$CI_PROJECT_DIR/.composer-cache"
+  DRUPAL_WEB_ROOT: "web"
+  MYSQL_ROOT_PASSWORD: "root"
+  MYSQL_DATABASE: "drupal"
+  SIMPLETEST_DB: "mysql://root:root@mariadb:3306/drupal"
+  SIMPLETEST_BASE_URL: "http://127.0.0.1:8080"
+  MINK_DRIVER_ARGS_WEBDRIVER: '["chrome", {"browserName":"chrome","goog:chromeOptions":{"args":["--disable-gpu","--headless","--no-sandbox"]}}, "http://chrome:4444/wd/hub"]'
+  BROWSERTEST_OUTPUT_DIRECTORY: "/tmp/browser-output"
+
+# ---------------------------------------------------------------------------
+# Base job: shared between most stages.
+# ---------------------------------------------------------------------------
+.base:
+  image: "php:${PHP_VERSION}-cli"
+  before_script:
+    - apt-get update && apt-get install -y --no-install-recommends
+        git unzip libpng-dev libzip-dev libicu-dev libonig-dev mariadb-client curl
+    - docker-php-ext-install -j$(nproc) gd mbstring intl pdo_mysql opcache zip
+    - curl -fsSL https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
+    - composer --version
+    - composer install --prefer-dist --no-progress
+  cache:
+    key:
+      files:
+        - composer.lock
+      prefix: "${PHP_VERSION}-${DRUPAL_VERSION}"
+    paths:
+      - vendor/
+      - .composer-cache/
+  parallel:
+    matrix:
+      - PHP_VERSION: ["8.2", "8.3"]
+        DRUPAL_VERSION: ["^10.3", "^11"]
+
+# ---------------------------------------------------------------------------
+# Stage: lint — fast, runs once per PHP version.
+# ---------------------------------------------------------------------------
+phpcs:
+  extends: .base
+  stage: lint
+  parallel:
+    matrix:
+      - PHP_VERSION: ["8.2", "8.3"]
+  script:
+    - bash scripts/run-phpcs.sh
+
+yamllint:
+  stage: lint
+  image: pipelinecomponents/yamllint:latest
+  script:
+    - yamllint -c .yamllint.yml .
+
+# ---------------------------------------------------------------------------
+# Stage: static — PHPStan against both Drupal 10 and 11.
+# ---------------------------------------------------------------------------
+phpstan:
+  extends: .base
+  stage: static
+  needs: ["phpcs"]
+  before_script:
+    - !reference [.base, before_script]
+    - composer require --no-update
+        "drupal/core-recommended:${DRUPAL_VERSION}"
+        "drupal/core-composer-scaffold:${DRUPAL_VERSION}"
+        "drupal/core-project-message:${DRUPAL_VERSION}"
+    - composer require --no-update --dev "drupal/core-dev:${DRUPAL_VERSION}"
+    - composer update --prefer-dist --no-progress
+  script:
+    - bash scripts/run-phpstan.sh
+  artifacts:
+    when: on_failure
+    paths:
+      - phpstan-report.xml
+    expire_in: 1 week
+
+# ---------------------------------------------------------------------------
+# Stage: test — unit, kernel, functional.
+# ---------------------------------------------------------------------------
+unit:
+  extends: .base
+  stage: test
+  needs: ["phpcs"]
+  script:
+    - vendor/bin/phpunit --testsuite=unit --colors=never --log-junit=junit-unit.xml
+  artifacts:
+    when: always
+    reports:
+      junit: junit-unit.xml
+    expire_in: 1 week
+
+kernel:
+  extends: .base
+  stage: test
+  needs: ["phpcs"]
+  services:
+    - name: mariadb:10.11
+      alias: mariadb
+  script:
+    - bash scripts/wait-for-mysql.sh mariadb 3306
+    - vendor/bin/phpunit --testsuite=kernel --colors=never --log-junit=junit-kernel.xml
+  artifacts:
+    when: always
+    reports:
+      junit: junit-kernel.xml
+    expire_in: 1 week
+
+functional:
+  extends: .base
+  stage: test
+  needs: ["kernel"]
+  services:
+    - name: mariadb:10.11
+      alias: mariadb
+    - name: selenium/standalone-chrome:124.0
+      alias: chrome
+  script:
+    - bash scripts/wait-for-mysql.sh mariadb 3306
+    - bash scripts/setup-drupal.sh
+    - mkdir -p /tmp/browser-output
+    - php -S 127.0.0.1:8080 -t "${DRUPAL_WEB_ROOT}" > /tmp/php-server.log 2>&1 &
+    - sleep 2
+    - vendor/bin/phpunit --testsuite=functional --colors=never --log-junit=junit-functional.xml
+  artifacts:
+    when: always
+    paths:
+      - /tmp/browser-output/
+      - /tmp/php-server.log
+    reports:
+      junit: junit-functional.xml
+    expire_in: 1 week
+
+coverage:
+  extends: .base
+  stage: test
+  needs: ["unit"]
+  parallel:
+    matrix:
+      - PHP_VERSION: ["8.3"]
+        DRUPAL_VERSION: ["^11"]
+  before_script:
+    - !reference [.base, before_script]
+    - pecl install pcov && docker-php-ext-enable pcov
+  script:
+    - vendor/bin/phpunit --testsuite=unit --coverage-cobertura=coverage.xml --coverage-text
+  coverage: '/^\s*Lines:\s*\d+.\d+\%/'
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage.xml
+    expire_in: 1 week
+
+# ---------------------------------------------------------------------------
+# Stage: security
+# ---------------------------------------------------------------------------
+security-audit:
+  extends: .base
+  stage: security
+  needs: ["phpcs"]
+  parallel:
+    matrix:
+      - PHP_VERSION: ["8.3"]
+  script:
+    - composer audit --locked --no-dev
+
+# ---------------------------------------------------------------------------
+# Stage: deploy — manual gate, main only.
+# ---------------------------------------------------------------------------
+deploy:staging:
+  stage: deploy
+  image: "php:8.3-cli"
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      when: manual
+      allow_failure: false
+  needs: ["phpstan", "functional", "security-audit"]
+  environment:
+    name: staging
+    url: https://staging.example.com
+  before_script:
+    - apt-get update && apt-get install -y --no-install-recommends git unzip rsync openssh-client
+    - curl -fsSL https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
+    - composer install --no-dev --optimize-autoloader --prefer-dist
+  script:
+    - |
+      mkdir -p ~/.ssh
+      echo "$DEPLOY_SSH_KEY" > ~/.ssh/id_ed25519
+      chmod 600 ~/.ssh/id_ed25519
+      ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+    - rsync -az --delete --exclude='.git/' --exclude='tests/' --exclude='*.md'
+        ./ "${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PATH}/"

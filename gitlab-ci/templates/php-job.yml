@@ -1,0 +1,90 @@
+---
+# Reusable PHP / Drupal job definitions for GitLab CI.
+#
+# Usage from a downstream project's .gitlab-ci.yml:
+#
+#   include:
+#     - project: 'your-group/drupal-ci-templates'
+#       ref: main
+#       file: '/gitlab-ci/templates/php-job.yml'
+#
+#   variables:
+#     PHP_VERSION: "8.3"
+#     DRUPAL_VERSION: "^11"
+#
+#   stages: [lint, test]
+#
+#   my-phpcs:
+#     extends: .drupal-phpcs
+#     stage: lint
+#
+#   my-unit:
+#     extends: .drupal-unit
+#     stage: test
+
+.drupal-php-base:
+  image: "php:${PHP_VERSION:-8.3}-cli"
+  variables:
+    COMPOSER_NO_INTERACTION: "1"
+    COMPOSER_MEMORY_LIMIT: "-1"
+    COMPOSER_CACHE_DIR: "$CI_PROJECT_DIR/.composer-cache"
+  before_script:
+    - apt-get update && apt-get install -y --no-install-recommends
+        git unzip libpng-dev libzip-dev libicu-dev libonig-dev mariadb-client curl
+    - docker-php-ext-install -j$(nproc) gd mbstring intl pdo_mysql opcache zip
+    - curl -fsSL https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
+    - |
+      if [ -n "${DRUPAL_VERSION:-}" ]; then
+        composer require --no-update \
+          "drupal/core-recommended:${DRUPAL_VERSION}" \
+          "drupal/core-composer-scaffold:${DRUPAL_VERSION}" \
+          "drupal/core-project-message:${DRUPAL_VERSION}"
+        composer require --no-update --dev "drupal/core-dev:${DRUPAL_VERSION}"
+      fi
+    - composer install --prefer-dist --no-progress
+  cache:
+    key:
+      files:
+        - composer.lock
+      prefix: "${PHP_VERSION:-8.3}-${DRUPAL_VERSION:-default}"
+    paths:
+      - vendor/
+      - .composer-cache/
+
+.drupal-phpcs:
+  extends: .drupal-php-base
+  script:
+    - bash scripts/run-phpcs.sh
+
+.drupal-phpstan:
+  extends: .drupal-php-base
+  script:
+    - bash scripts/run-phpstan.sh
+
+.drupal-unit:
+  extends: .drupal-php-base
+  script:
+    - vendor/bin/phpunit --testsuite=unit --colors=never --log-junit=junit-unit.xml
+  artifacts:
+    when: always
+    reports:
+      junit: junit-unit.xml
+    expire_in: 1 week
+
+.drupal-kernel:
+  extends: .drupal-php-base
+  services:
+    - name: mariadb:10.11
+      alias: mariadb
+  variables:
+    MYSQL_ROOT_PASSWORD: "root"
+    MYSQL_DATABASE: "drupal"
+    SIMPLETEST_DB: "mysql://root:root@mariadb:3306/drupal"
+  script:
+    - bash scripts/wait-for-mysql.sh mariadb 3306
+    - vendor/bin/phpunit --testsuite=kernel --colors=never --log-junit=junit-kernel.xml
+  artifacts:
+    when: always
+    reports:
+      junit: junit-kernel.xml
+    expire_in: 1 week

@@ -1,0 +1,53 @@
+---
+# Lighter GitLab CI for small contrib modules — lint + phpstan + unit only.
+
+stages:
+  - lint
+  - test
+
+variables:
+  COMPOSER_NO_INTERACTION: "1"
+  COMPOSER_MEMORY_LIMIT: "-1"
+  COMPOSER_CACHE_DIR: "$CI_PROJECT_DIR/.composer-cache"
+
+.php-base:
+  image: "php:${PHP_VERSION}-cli"
+  before_script:
+    - apt-get update && apt-get install -y --no-install-recommends git unzip libpng-dev libzip-dev libicu-dev libonig-dev
+    - docker-php-ext-install -j$(nproc) gd mbstring intl pdo_mysql opcache zip
+    - curl -fsSL https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
+    - composer install --prefer-dist --no-progress
+  cache:
+    key:
+      files:
+        - composer.lock
+      prefix: "${PHP_VERSION}"
+    paths:
+      - vendor/
+      - .composer-cache/
+  parallel:
+    matrix:
+      - PHP_VERSION: ["8.2", "8.3"]
+
+phpcs:
+  extends: .php-base
+  stage: lint
+  script:
+    - bash scripts/run-phpcs.sh
+
+phpstan:
+  extends: .php-base
+  stage: lint
+  script:
+    - bash scripts/run-phpstan.sh
+
+unit:
+  extends: .php-base
+  stage: test
+  script:
+    - vendor/bin/phpunit --testsuite=unit --colors=never --log-junit=junit.xml
+  artifacts:
+    when: always
+    reports:
+      junit: junit.xml
+    expire_in: 1 week
