@@ -1,0 +1,113 @@
+---
+# Nightly run against Drupal 11.x-dev (and 10.x-dev) to surface upstream
+# breakage early — before it lands in a tagged release.
+#
+# Failures here should open a tracking issue, not block a PR.
+
+name: Nightly (drupal/core dev)
+
+on:
+  schedule:
+    # 03:17 UTC every day — off-peak, avoids the top-of-hour GHA spike.
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  COMPOSER_NO_INTERACTION: "1"
+  COMPOSER_MEMORY_LIMIT: -1
+
+jobs:
+  nightly:
+    name: "Nightly (PHP ${{ matrix.php }}, Drupal ${{ matrix.drupal }})"
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ["8.3"]
+        drupal: ["10.x-dev", "11.x-dev"]
+    services:
+      mysql:
+        image: mariadb:10.11
+        env:
+          MARIADB_ROOT_PASSWORD: root
+          MARIADB_DATABASE: drupal
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mariadb-admin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      SIMPLETEST_DB: "mysql://root:root@127.0.0.1:3306/drupal"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: gd, mbstring, intl, pdo_mysql, opcache
+          coverage: none
+          tools: composer:v2
+
+      - name: Allow dev versions of Drupal core
+        run: |
+          composer config minimum-stability dev
+          composer config prefer-stable true
+          composer require --no-update \
+            "drupal/core-recommended:${{ matrix.drupal }}" \
+            "drupal/core-composer-scaffold:${{ matrix.drupal }}" \
+            "drupal/core-project-message:${{ matrix.drupal }}"
+          composer require --no-update --dev \
+            "drupal/core-dev:${{ matrix.drupal }}"
+
+      - name: Install dependencies
+        uses: ramsey/composer-install@v3
+        with:
+          composer-options: "--prefer-dist"
+
+      - name: PHPStan with deprecation rules
+        run: ./scripts/run-phpstan.sh
+
+      - name: Unit + Kernel
+        run: |
+          ./scripts/wait-for-mysql.sh 127.0.0.1 3306
+          vendor/bin/phpunit --testsuite=unit --colors=always
+          vendor/bin/phpunit --testsuite=kernel --colors=always
+
+      - name: Open tracking issue on failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = `Nightly failed: PHP ${{ matrix.php }} / Drupal ${{ matrix.drupal }}`;
+            const body = [
+              `Nightly run against \`${{ matrix.drupal }}\` failed.`,
+              ``,
+              `- Run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              `- Commit: ${context.sha}`,
+              ``,
+              `Investigate before this lands in a tagged release.`,
+            ].join("\n");
+            const { data: existing } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "open",
+              labels: "nightly-failure",
+            });
+            if (existing.some(i => i.title === title)) {
+              core.info("Tracking issue already open — skipping.");
+              return;
+            }
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title,
+              body,
+              labels: ["nightly-failure", "drupal-core-dev"],
+            });
