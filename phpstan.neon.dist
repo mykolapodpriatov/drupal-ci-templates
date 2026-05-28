@@ -1,0 +1,40 @@
+includes:
+  - vendor/mglaman/phpstan-drupal/extension.neon
+  - vendor/mglaman/phpstan-drupal/rules.neon
+  - vendor/phpstan/phpstan-deprecation-rules/rules.neon
+  # Uncomment once you've generated one with `vendor/bin/phpstan analyse --generate-baseline`.
+  # - phpstan-baseline.neon
+
+parameters:
+  level: 8
+
+  paths:
+    - web/modules/custom
+    - web/themes/custom
+    - web/profiles/custom
+
+  excludePaths:
+    analyseAndScan:
+      - web/core/*
+      - web/modules/contrib/*
+      - web/themes/contrib/*
+      - web/profiles/contrib/*
+      - vendor/*
+      - node_modules/*
+
+  # Drupal core ships a number of legacy patterns that PHPStan can't fully
+  # reason about. Ignore the common false positives explicitly so the
+  # baseline file stays small.
+  ignoreErrors:
+    - '#Drupal calls should be avoided in classes#'
+    - '#Plugin definitions cannot be altered#'
+    - identifier: missingType.iterableValue
+
+  drupal:
+    drupal_root: web
+    bleedingEdge: false
+
+  reportUnmatchedIgnoredErrors: false
+  treatPhpDocTypesAsCertain: false
+
+  tmpDir: .phpstan-cache

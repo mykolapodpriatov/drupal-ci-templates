@@ -1,0 +1,41 @@
+<?xml version="1.0"?>
+<ruleset name="Project">
+  <description>
+    PHP_CodeSniffer ruleset for Drupal 10/11 projects.
+    Built on Drupal + DrupalPractice with sensible excludes for contrib code.
+  </description>
+
+  <!-- Scan custom code only. -->
+  <file>web/modules/custom</file>
+  <file>web/themes/custom</file>
+  <file>web/profiles/custom</file>
+
+  <!-- Never lint anything we don't own. -->
+  <exclude-pattern>*/vendor/*</exclude-pattern>
+  <exclude-pattern>*/node_modules/*</exclude-pattern>
+  <exclude-pattern>web/core/*</exclude-pattern>
+  <exclude-pattern>web/modules/contrib/*</exclude-pattern>
+  <exclude-pattern>web/themes/contrib/*</exclude-pattern>
+  <exclude-pattern>web/profiles/contrib/*</exclude-pattern>
+  <exclude-pattern>*/tests/fixtures/*</exclude-pattern>
+
+  <!-- File extensions PHPCS should consider. -->
+  <arg name="extensions" value="php,module,inc,install,test,profile,theme,info,txt,md,yml"/>
+  <arg name="colors"/>
+  <arg name="parallel" value="8"/>
+  <arg value="sp"/>
+
+  <!-- Drupal core ruleset (ships with drupal/coder). -->
+  <rule ref="Drupal">
+    <!-- Allow YAML files without a trailing newline — Drupal core itself is inconsistent here. -->
+    <exclude name="Drupal.Files.EndFileNewline.NoneFound"/>
+  </rule>
+
+  <!-- DrupalPractice — catches Drupal-specific anti-patterns. -->
+  <rule ref="DrupalPractice"/>
+
+  <!-- Project-specific overrides go here. Example: enforce strict types. -->
+  <!--
+  <rule ref="Generic.PHP.RequireStrictTypes"/>
+  -->
+</ruleset>
