@@ -1,0 +1,192 @@
+---
+# Bitbucket Pipelines equivalent of the GitHub Actions / GitLab full pipeline.
+#
+# Bitbucket doesn't support a real matrix (no `strategy: matrix` like GHA, no
+# `parallel: matrix` like GitLab), so we use YAML anchors + `parallel:` steps
+# to fan out across PHP versions where it matters and accept some duplication
+# where it doesn't.
+
+image: php:8.3-cli
+
+definitions:
+  caches:
+    composer: $BITBUCKET_CLONE_DIR/.composer-cache
+    vendor: vendor
+
+  services:
+    mysql:
+      image: mariadb:10.11
+      variables:
+        MARIADB_ROOT_PASSWORD: "root"
+        MARIADB_DATABASE: "drupal"
+    chrome:
+      image: selenium/standalone-chrome:124.0
+      memory: 2048
+
+  steps:
+    # ---- shared setup snippet, included via &anchor ----------------------
+    - step: &install
+        name: Install dependencies
+        caches:
+          - composer
+          - vendor
+        script:
+          - apt-get update && apt-get install -y --no-install-recommends
+              git unzip libpng-dev libzip-dev libicu-dev libonig-dev mariadb-client curl
+          - docker-php-ext-install -j$(nproc) gd mbstring intl pdo_mysql opcache zip
+          - curl -fsSL https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
+          - export COMPOSER_NO_INTERACTION=1
+          - export COMPOSER_MEMORY_LIMIT=-1
+          - export COMPOSER_CACHE_DIR=$BITBUCKET_CLONE_DIR/.composer-cache
+          - composer install --prefer-dist --no-progress
+        artifacts:
+          - vendor/**
+
+    # ---- lint step (PHP 8.3 only — fast feedback) -------------------------
+    - step: &lint
+        name: Lint
+        caches: [composer, vendor]
+        script:
+          - bash scripts/run-phpcs.sh
+
+    # ---- phpstan, parameterised by PHP_VERSION ---------------------------
+    - step: &phpstan-8-2
+        name: "PHPStan (PHP 8.2)"
+        image: php:8.2-cli
+        caches: [composer]
+        script:
+          - apt-get update && apt-get install -y --no-install-recommends git unzip libpng-dev libzip-dev libicu-dev libonig-dev
+          - docker-php-ext-install -j$(nproc) gd mbstring intl pdo_mysql opcache zip
+          - curl -fsSL https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
+          - composer install --prefer-dist --no-progress
+          - bash scripts/run-phpstan.sh
+
+    - step: &phpstan-8-3
+        name: "PHPStan (PHP 8.3)"
+        image: php:8.3-cli
+        caches: [composer]
+        script:
+          - apt-get update && apt-get install -y --no-install-recommends git unzip libpng-dev libzip-dev libicu-dev libonig-dev
+          - docker-php-ext-install -j$(nproc) gd mbstring intl pdo_mysql opcache zip
+          - curl -fsSL https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
+          - composer install --prefer-dist --no-progress
+          - bash scripts/run-phpstan.sh
+
+    # ---- unit ------------------------------------------------------------
+    - step: &unit-8-2
+        name: "Unit (PHP 8.2)"
+        image: php:8.2-cli
+        caches: [composer]
+        script:
+          - apt-get update && apt-get install -y --no-install-recommends git unzip libpng-dev libzip-dev libicu-dev libonig-dev
+          - docker-php-ext-install -j$(nproc) gd mbstring intl pdo_mysql opcache zip
+          - curl -fsSL https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
+          - composer install --prefer-dist --no-progress
+          - vendor/bin/phpunit --testsuite=unit --colors=never
+
+    - step: &unit-8-3
+        name: "Unit (PHP 8.3)"
+        image: php:8.3-cli
+        caches: [composer]
+        script:
+          - apt-get update && apt-get install -y --no-install-recommends git unzip libpng-dev libzip-dev libicu-dev libonig-dev
+          - docker-php-ext-install -j$(nproc) gd mbstring intl pdo_mysql opcache zip
+          - curl -fsSL https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
+          - composer install --prefer-dist --no-progress
+          - vendor/bin/phpunit --testsuite=unit --colors=never
+
+    # ---- kernel ----------------------------------------------------------
+    - step: &kernel
+        name: Kernel
+        services: [mysql]
+        caches: [composer]
+        script:
+          - apt-get update && apt-get install -y --no-install-recommends git unzip libpng-dev libzip-dev libicu-dev libonig-dev mariadb-client
+          - docker-php-ext-install -j$(nproc) gd mbstring intl pdo_mysql opcache zip
+          - curl -fsSL https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
+          - composer install --prefer-dist --no-progress
+          - export SIMPLETEST_DB="mysql://root:root@127.0.0.1:3306/drupal"
+          - bash scripts/wait-for-mysql.sh 127.0.0.1 3306
+          - vendor/bin/phpunit --testsuite=kernel --colors=never
+
+    # ---- functional ------------------------------------------------------
+    - step: &functional
+        name: Functional
+        services: [mysql, chrome]
+        caches: [composer]
+        size: 2x
+        script:
+          - apt-get update && apt-get install -y --no-install-recommends git unzip libpng-dev libzip-dev libicu-dev libonig-dev mariadb-client
+          - docker-php-ext-install -j$(nproc) gd mbstring intl pdo_mysql opcache zip
+          - curl -fsSL https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
+          - composer install --prefer-dist --no-progress
+          - export SIMPLETEST_DB="mysql://root:root@127.0.0.1:3306/drupal"
+          - export SIMPLETEST_BASE_URL="http://127.0.0.1:8080"
+          - export MINK_DRIVER_ARGS_WEBDRIVER='["chrome", {"browserName":"chrome","goog:chromeOptions":{"args":["--disable-gpu","--headless","--no-sandbox"]}}, "http://127.0.0.1:4444/wd/hub"]'
+          - export BROWSERTEST_OUTPUT_DIRECTORY=/tmp/browser-output
+          - mkdir -p /tmp/browser-output
+          - bash scripts/wait-for-mysql.sh 127.0.0.1 3306
+          - bash scripts/setup-drupal.sh
+          - php -S 127.0.0.1:8080 -t web > /tmp/php-server.log 2>&1 &
+          - sleep 2
+          - vendor/bin/phpunit --testsuite=functional --colors=never
+        artifacts:
+          - /tmp/browser-output/**
+          - /tmp/php-server.log
+
+    # ---- security --------------------------------------------------------
+    - step: &security
+        name: Security audit
+        caches: [composer]
+        script:
+          - apt-get update && apt-get install -y --no-install-recommends git unzip
+          - curl -fsSL https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
+          - composer install --prefer-dist --no-progress
+          - composer audit --locked --no-dev
+
+    # ---- deploy ----------------------------------------------------------
+    - step: &deploy
+        name: Deploy (staging)
+        deployment: staging
+        caches: [composer]
+        script:
+          - apt-get update && apt-get install -y --no-install-recommends git unzip rsync openssh-client
+          - curl -fsSL https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
+          - composer install --no-dev --optimize-autoloader --prefer-dist
+          - mkdir -p ~/.ssh && echo "$DEPLOY_SSH_KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          - ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+          - rsync -az --delete --exclude='.git/' --exclude='tests/' --exclude='*.md'
+              ./ "${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PATH}/"
+
+pipelines:
+  default:
+    - step: *lint
+    - parallel:
+        - step: *phpstan-8-2
+        - step: *phpstan-8-3
+        - step: *unit-8-2
+        - step: *unit-8-3
+    - step: *kernel
+    - step: *functional
+    - step: *security
+
+  branches:
+    main:
+      - step: *lint
+      - parallel:
+          - step: *phpstan-8-2
+          - step: *phpstan-8-3
+          - step: *unit-8-2
+          - step: *unit-8-3
+      - step: *kernel
+      - step: *functional
+      - step: *security
+      - step: *deploy
+
+  tags:
+    'v*':
+      - step: *lint
+      - parallel:
+          - step: *phpstan-8-3
+          - step: *unit-8-3
+      - step: *security
