@@ -51,7 +51,9 @@ jobs:
       - name: PHPCS (Drupal + DrupalPractice)
         run: ./scripts/run-phpcs.sh
 
-      - name: Twig CS
+      # Advisory / non-gating: `|| true` keeps Twig CS findings informational.
+      # Drop the `|| true` to make Twig style violations fail the build.
+      - name: Twig CS (advisory)
         run: vendor/bin/twigcs ${{ env.DRUPAL_WEB_ROOT }}/modules/custom ${{ env.DRUPAL_WEB_ROOT }}/themes/custom || true
 
       - name: yamllint
@@ -103,7 +105,9 @@ jobs:
       - name: PHPStan (level 8 + phpstan-drupal)
         run: ./scripts/run-phpstan.sh
 
-      - name: PHPMD
+      # Advisory / non-gating: `|| true` keeps PHPMD findings informational.
+      # Drop the `|| true` to make mess-detector findings fail the build.
+      - name: PHPMD (advisory)
         run: vendor/bin/phpmd ${{ env.DRUPAL_WEB_ROOT }}/modules/custom text cleancode,codesize,unusedcode || true
 
   # ---------------------------------------------------------------------------
