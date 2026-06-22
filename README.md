@@ -1,5 +1,7 @@
 # Drupal CI Templates
 
+[![CI](https://github.com/mykolapodpriatov/drupal-ci-templates/actions/workflows/meta.yml/badge.svg)](https://github.com/mykolapodpriatov/drupal-ci-templates/actions/workflows/meta.yml)
+
 Copy-paste CI/CD pipeline templates for Drupal 10 and Drupal 11 projects. Covers
 GitHub Actions, GitLab CI, and Bitbucket Pipelines, plus a small set of shared
 shell helpers and tool configs (PHPStan, PHPCS, PHPUnit) that the pipelines
