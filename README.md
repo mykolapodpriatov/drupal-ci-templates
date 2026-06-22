@@ -108,8 +108,9 @@ the CI platform's UI — never inline.
   `phpunit.xml.dist`.
 - For kernel/functional: a MySQL/MariaDB service. The templates spin one up
   automatically; you don't need an external DB.
-- For functional: `chromedriver` for Mink — the GitHub Actions workflow
-  starts it as a service.
+- For functional: a WebDriver endpoint for Mink — the templates run a
+  `selenium/standalone-chrome` container as a service (reached over
+  `MINK_DRIVER_ARGS_WEBDRIVER`); you don't run `chromedriver` yourself.
 
 ## Versioning policy
 

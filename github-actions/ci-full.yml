@@ -213,7 +213,7 @@ jobs:
         run: vendor/bin/phpunit --testsuite=kernel --colors=always
 
   # ---------------------------------------------------------------------------
-  # Stage 5: functional tests — full Drupal install + chromedriver
+  # Stage 5: functional tests — full Drupal install + Selenium (standalone-chrome)
   # ---------------------------------------------------------------------------
   functional:
     name: "Functional (PHP ${{ matrix.php }}, Drupal ${{ matrix.drupal }})"
