@@ -101,6 +101,9 @@ the CI platform's UI — never inline.
 ## Requirements assumed by the templates
 
 - `composer.json` at the repo root.
+- `composer.lock` **committed** to the repo. The security job runs
+  `composer audit --locked`, which reads the lock file; the shipped
+  `.gitignore` therefore does *not* ignore it (site repos commit the lock).
 - A `tests/` directory (or `web/modules/custom/*/tests/`) discoverable by
   `phpunit.xml.dist`.
 - For kernel/functional: a MySQL/MariaDB service. The templates spin one up
