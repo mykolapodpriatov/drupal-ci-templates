@@ -112,6 +112,11 @@ jobs:
           coverage: none
           tools: composer:v2
       - uses: ramsey/composer-install@v3
+      # Require drupal/core-dev so PHPStan (phpstan-drupal) and PHPUnit's test
+      # base classes are present, matching the project's pinned core version.
+      # Without this the per-module jobs error on a fresh project.
+      - name: Require Drupal core-dev
+        run: composer require --dev "drupal/core-dev:*" --no-progress
       - run: ./scripts/wait-for-mysql.sh 127.0.0.1 3306
       - run: ./scripts/run-phpstan.sh web/modules/custom/foo
       - run: vendor/bin/phpunit --group=foo --colors=always
@@ -145,6 +150,11 @@ jobs:
           coverage: none
           tools: composer:v2
       - uses: ramsey/composer-install@v3
+      # Require drupal/core-dev so PHPStan (phpstan-drupal) and PHPUnit's test
+      # base classes are present, matching the project's pinned core version.
+      # Without this the per-module jobs error on a fresh project.
+      - name: Require Drupal core-dev
+        run: composer require --dev "drupal/core-dev:*" --no-progress
       - run: ./scripts/wait-for-mysql.sh 127.0.0.1 3306
       - run: ./scripts/run-phpstan.sh web/modules/custom/bar
       - run: vendor/bin/phpunit --group=bar --colors=always
@@ -178,6 +188,11 @@ jobs:
           coverage: none
           tools: composer:v2
       - uses: ramsey/composer-install@v3
+      # Require drupal/core-dev so PHPStan (phpstan-drupal) and PHPUnit's test
+      # base classes are present, matching the project's pinned core version.
+      # Without this the per-module jobs error on a fresh project.
+      - name: Require Drupal core-dev
+        run: composer require --dev "drupal/core-dev:*" --no-progress
       - run: ./scripts/wait-for-mysql.sh 127.0.0.1 3306
       - run: ./scripts/run-phpstan.sh web/modules/custom/baz
       - run: vendor/bin/phpunit --group=baz --colors=always
