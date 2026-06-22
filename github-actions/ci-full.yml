@@ -71,6 +71,10 @@ jobs:
       matrix:
         php: ["8.2", "8.3"]
         drupal: ["^10.3", "^11"]
+        # Drupal 11 requires PHP 8.3+, so PHP 8.2 × ^11 can never resolve.
+        exclude:
+          - php: "8.2"
+            drupal: "^11"
     steps:
       - uses: actions/checkout@v4
 
@@ -114,6 +118,10 @@ jobs:
       matrix:
         php: ["8.2", "8.3"]
         drupal: ["^10.3", "^11"]
+        # Drupal 11 requires PHP 8.3+, so PHP 8.2 × ^11 can never resolve.
+        exclude:
+          - php: "8.2"
+            drupal: "^11"
     steps:
       - uses: actions/checkout@v4
 
@@ -152,6 +160,10 @@ jobs:
       matrix:
         php: ["8.2", "8.3"]
         drupal: ["^10.3", "^11"]
+        # Drupal 11 requires PHP 8.3+, so PHP 8.2 × ^11 can never resolve.
+        exclude:
+          - php: "8.2"
+            drupal: "^11"
     services:
       mysql:
         image: mariadb:10.11
@@ -208,6 +220,10 @@ jobs:
       matrix:
         php: ["8.2", "8.3"]
         drupal: ["^10.3", "^11"]
+        # Drupal 11 requires PHP 8.3+, so PHP 8.2 × ^11 can never resolve.
+        exclude:
+          - php: "8.2"
+            drupal: "^11"
     services:
       mysql:
         image: mariadb:10.11

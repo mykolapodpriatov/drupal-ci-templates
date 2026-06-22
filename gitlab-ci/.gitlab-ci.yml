@@ -43,9 +43,14 @@ variables:
     paths:
       - vendor/
       - .composer-cache/
+  # GitLab's parallel:matrix has no exclude, so the valid PHP × Drupal pairs
+  # are enumerated explicitly. Drupal 11 requires PHP 8.3+, so PHP 8.2 is only
+  # paired with Drupal ^10.3 and ^11 only with PHP 8.3+.
   parallel:
     matrix:
-      - PHP_VERSION: ["8.2", "8.3"]
+      - PHP_VERSION: "8.2"
+        DRUPAL_VERSION: "^10.3"
+      - PHP_VERSION: "8.3"
         DRUPAL_VERSION: ["^10.3", "^11"]
 
 # ---------------------------------------------------------------------------
