@@ -9,10 +9,21 @@
 #
 # Honours PHPSTAN_MEMORY_LIMIT (default 1G) and PHPSTAN_CONFIG (default
 # phpstan.neon, falling back to phpstan.neon.dist).
+#
+# If PHPSTAN_REPORT is set, a JUnit report is written to that path (consumed
+# as a CI artifact, e.g. GitLab's phpstan-report.xml); otherwise findings are
+# printed as a human-readable table.
 
 set -euo pipefail
 
 MEMORY_LIMIT="${PHPSTAN_MEMORY_LIMIT:-1G}"
+REPORT_FILE="${PHPSTAN_REPORT:-}"
+
+if [ -n "$REPORT_FILE" ]; then
+  ERROR_FORMAT="junit"
+else
+  ERROR_FORMAT="table"
+fi
 
 if [ -n "${PHPSTAN_CONFIG:-}" ]; then
   CONFIG="$PHPSTAN_CONFIG"
@@ -30,19 +41,19 @@ if [ ! -x vendor/bin/phpstan ]; then
   exit 1
 fi
 
-echo "==> PHPStan: config=${CONFIG} memory=${MEMORY_LIMIT}"
+echo "==> PHPStan: config=${CONFIG} memory=${MEMORY_LIMIT} format=${ERROR_FORMAT}${REPORT_FILE:+ report=${REPORT_FILE}}"
 
-if [ "$#" -gt 0 ]; then
+run_phpstan() {
   vendor/bin/phpstan analyse \
     --configuration="$CONFIG" \
     --memory-limit="$MEMORY_LIMIT" \
     --no-progress \
-    --error-format=table \
+    --error-format="$ERROR_FORMAT" \
     "$@"
+}
+
+if [ -n "$REPORT_FILE" ]; then
+  run_phpstan "$@" > "$REPORT_FILE"
 else
-  vendor/bin/phpstan analyse \
-    --configuration="$CONFIG" \
-    --memory-limit="$MEMORY_LIMIT" \
-    --no-progress \
-    --error-format=table
+  run_phpstan "$@"
 fi

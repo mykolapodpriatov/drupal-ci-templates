@@ -64,16 +64,19 @@ root, adjust paths.
 
 | Stage      | PHP 8.2 / Drupal ^10.3 | PHP 8.2 / Drupal ^11 | PHP 8.3 / Drupal ^10.3 | PHP 8.3 / Drupal ^11 |
 | ---------- | :--------------------: | :------------------: | :--------------------: | :------------------: |
-| Lint       | yes                    | yes                  | yes                    | yes                  |
-| PHPStan    | yes                    | yes                  | yes                    | yes                  |
-| Unit       | yes                    | yes                  | yes                    | yes                  |
-| Kernel     | yes                    | yes                  | yes                    | yes                  |
-| Functional | yes                    | yes                  | yes                    | yes                  |
+| Lint       | yes                    | n/a                  | yes                    | n/a                  |
+| PHPStan    | yes                    | excluded             | yes                    | yes                  |
+| Unit       | yes                    | excluded             | yes                    | yes                  |
+| Kernel     | yes                    | excluded             | yes                    | yes                  |
+| Functional | yes                    | excluded             | yes                    | yes                  |
 
-Drupal 11 requires PHP 8.3 in its strictest form, but `^11` still accepts 8.2,
-so we keep both in the matrix and rely on Composer to resolve the right
-version. If you only target Drupal 11, drop the `^10.3` column from the
-matrix.
+Drupal 11 requires **PHP 8.3 or newer**, so the PHP 8.2 × `^11` combination can
+never resolve. The matrix therefore excludes it (GitHub Actions uses an
+`exclude:` block; GitLab enumerates the valid pairs; Bitbucket hard-codes the
+pairing per step): PHP 8.2 is only paired with Drupal `^10.3`, and `^11` only
+with PHP 8.3+. Lint runs once per PHP version (Drupal version irrelevant), so it
+has no `^11` column. If you only target Drupal 11, drop the `^10.3` rows and the
+PHP 8.2 jobs entirely.
 
 ## Deploy stage notes
 
@@ -98,12 +101,16 @@ the CI platform's UI — never inline.
 ## Requirements assumed by the templates
 
 - `composer.json` at the repo root.
+- `composer.lock` **committed** to the repo. The security job runs
+  `composer audit --locked`, which reads the lock file; the shipped
+  `.gitignore` therefore does *not* ignore it (site repos commit the lock).
 - A `tests/` directory (or `web/modules/custom/*/tests/`) discoverable by
   `phpunit.xml.dist`.
 - For kernel/functional: a MySQL/MariaDB service. The templates spin one up
   automatically; you don't need an external DB.
-- For functional: `chromedriver` for Mink — the GitHub Actions workflow
-  starts it as a service.
+- For functional: a WebDriver endpoint for Mink — the templates run a
+  `selenium/standalone-chrome` container as a service (reached over
+  `MINK_DRIVER_ARGS_WEBDRIVER`); you don't run `chromedriver` yourself.
 
 ## Versioning policy
 

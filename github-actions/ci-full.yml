@@ -51,7 +51,9 @@ jobs:
       - name: PHPCS (Drupal + DrupalPractice)
         run: ./scripts/run-phpcs.sh
 
-      - name: Twig CS
+      # Advisory / non-gating: `|| true` keeps Twig CS findings informational.
+      # Drop the `|| true` to make Twig style violations fail the build.
+      - name: Twig CS (advisory)
         run: vendor/bin/twigcs ${{ env.DRUPAL_WEB_ROOT }}/modules/custom ${{ env.DRUPAL_WEB_ROOT }}/themes/custom || true
 
       - name: yamllint
@@ -71,6 +73,10 @@ jobs:
       matrix:
         php: ["8.2", "8.3"]
         drupal: ["^10.3", "^11"]
+        # Drupal 11 requires PHP 8.3+, so PHP 8.2 × ^11 can never resolve.
+        exclude:
+          - php: "8.2"
+            drupal: "^11"
     steps:
       - uses: actions/checkout@v4
 
@@ -99,7 +105,9 @@ jobs:
       - name: PHPStan (level 8 + phpstan-drupal)
         run: ./scripts/run-phpstan.sh
 
-      - name: PHPMD
+      # Advisory / non-gating: `|| true` keeps PHPMD findings informational.
+      # Drop the `|| true` to make mess-detector findings fail the build.
+      - name: PHPMD (advisory)
         run: vendor/bin/phpmd ${{ env.DRUPAL_WEB_ROOT }}/modules/custom text cleancode,codesize,unusedcode || true
 
   # ---------------------------------------------------------------------------
@@ -114,6 +122,10 @@ jobs:
       matrix:
         php: ["8.2", "8.3"]
         drupal: ["^10.3", "^11"]
+        # Drupal 11 requires PHP 8.3+, so PHP 8.2 × ^11 can never resolve.
+        exclude:
+          - php: "8.2"
+            drupal: "^11"
     steps:
       - uses: actions/checkout@v4
 
@@ -152,6 +164,10 @@ jobs:
       matrix:
         php: ["8.2", "8.3"]
         drupal: ["^10.3", "^11"]
+        # Drupal 11 requires PHP 8.3+, so PHP 8.2 × ^11 can never resolve.
+        exclude:
+          - php: "8.2"
+            drupal: "^11"
     services:
       mysql:
         image: mariadb:10.11
@@ -197,7 +213,7 @@ jobs:
         run: vendor/bin/phpunit --testsuite=kernel --colors=always
 
   # ---------------------------------------------------------------------------
-  # Stage 5: functional tests — full Drupal install + chromedriver
+  # Stage 5: functional tests — full Drupal install + Selenium (standalone-chrome)
   # ---------------------------------------------------------------------------
   functional:
     name: "Functional (PHP ${{ matrix.php }}, Drupal ${{ matrix.drupal }})"
@@ -208,6 +224,10 @@ jobs:
       matrix:
         php: ["8.2", "8.3"]
         drupal: ["^10.3", "^11"]
+        # Drupal 11 requires PHP 8.3+, so PHP 8.2 × ^11 can never resolve.
+        exclude:
+          - php: "8.2"
+            drupal: "^11"
     services:
       mysql:
         image: mariadb:10.11

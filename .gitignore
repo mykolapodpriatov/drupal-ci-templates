@@ -1,6 +1,8 @@
 # Composer
 /vendor/
-composer.lock
+# NOTE: composer.lock is intentionally committed. Drupal *site* repos must
+# commit it so `composer audit --locked` (used by the security job) and
+# reproducible installs work. Only contrib libraries should ignore it.
 
 # PHPUnit / PHPStan caches
 .phpunit.result.cache

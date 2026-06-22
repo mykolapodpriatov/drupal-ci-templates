@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Matrix excludes the impossible PHP 8.2 × Drupal `^11` pairing across the
+  GitHub Actions, GitLab CI, and Bitbucket templates.
+
+## [1.0.0] - 2026-06-22
+
 ### Added
 - Initial repository structure, README, license, and contribution guide.
 - GitHub Actions workflows: `ci-full.yml`, `ci-minimal.yml`, `ci-monorepo.yml`,
@@ -25,4 +31,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Meta workflow at `.github/workflows/meta.yml` that runs `yamllint` and
   `actionlint` against the templates themselves.
 
-[Unreleased]: https://example.com/drupal-ci-templates/compare/HEAD...HEAD
+[Unreleased]: https://github.com/mykolapodpriatov/drupal-ci-templates/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/mykolapodpriatov/drupal-ci-templates/releases/tag/v1.0.0

@@ -50,49 +50,61 @@ definitions:
           - bash scripts/run-phpcs.sh
 
     # ---- phpstan, parameterised by PHP_VERSION ---------------------------
+    # Bitbucket has no real matrix, so PHP × Drupal pairs are hard-coded per
+    # step. Drupal 11 requires PHP 8.3+, so PHP 8.2 pins Drupal ^10.3 and
+    # PHP 8.3 pins Drupal ^11 — the PHP 8.2 × ^11 pair can never resolve.
     - step: &phpstan-8-2
-        name: "PHPStan (PHP 8.2)"
+        name: "PHPStan (PHP 8.2, Drupal ^10.3)"
         image: php:8.2-cli
         caches: [composer]
         script:
           - apt-get update && apt-get install -y --no-install-recommends git unzip libpng-dev libzip-dev libicu-dev libonig-dev
           - docker-php-ext-install -j$(nproc) gd mbstring intl pdo_mysql opcache zip
           - curl -fsSL https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
-          - composer install --prefer-dist --no-progress
+          - composer require --no-update "drupal/core-recommended:^10.3" "drupal/core-composer-scaffold:^10.3" "drupal/core-project-message:^10.3"
+          - composer require --no-update --dev "drupal/core-dev:^10.3"
+          - composer update --prefer-dist --no-progress
           - bash scripts/run-phpstan.sh
 
     - step: &phpstan-8-3
-        name: "PHPStan (PHP 8.3)"
+        name: "PHPStan (PHP 8.3, Drupal ^11)"
         image: php:8.3-cli
         caches: [composer]
         script:
           - apt-get update && apt-get install -y --no-install-recommends git unzip libpng-dev libzip-dev libicu-dev libonig-dev
           - docker-php-ext-install -j$(nproc) gd mbstring intl pdo_mysql opcache zip
           - curl -fsSL https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
-          - composer install --prefer-dist --no-progress
+          - composer require --no-update "drupal/core-recommended:^11" "drupal/core-composer-scaffold:^11" "drupal/core-project-message:^11"
+          - composer require --no-update --dev "drupal/core-dev:^11"
+          - composer update --prefer-dist --no-progress
           - bash scripts/run-phpstan.sh
 
     # ---- unit ------------------------------------------------------------
+    # Same PHP × Drupal pairing rule as PHPStan: 8.2 → ^10.3, 8.3 → ^11.
     - step: &unit-8-2
-        name: "Unit (PHP 8.2)"
+        name: "Unit (PHP 8.2, Drupal ^10.3)"
         image: php:8.2-cli
         caches: [composer]
         script:
           - apt-get update && apt-get install -y --no-install-recommends git unzip libpng-dev libzip-dev libicu-dev libonig-dev
           - docker-php-ext-install -j$(nproc) gd mbstring intl pdo_mysql opcache zip
           - curl -fsSL https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
-          - composer install --prefer-dist --no-progress
+          - composer require --no-update "drupal/core-recommended:^10.3" "drupal/core-composer-scaffold:^10.3" "drupal/core-project-message:^10.3"
+          - composer require --no-update --dev "drupal/core-dev:^10.3"
+          - composer update --prefer-dist --no-progress
           - vendor/bin/phpunit --testsuite=unit --colors=never
 
     - step: &unit-8-3
-        name: "Unit (PHP 8.3)"
+        name: "Unit (PHP 8.3, Drupal ^11)"
         image: php:8.3-cli
         caches: [composer]
         script:
           - apt-get update && apt-get install -y --no-install-recommends git unzip libpng-dev libzip-dev libicu-dev libonig-dev
           - docker-php-ext-install -j$(nproc) gd mbstring intl pdo_mysql opcache zip
           - curl -fsSL https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
-          - composer install --prefer-dist --no-progress
+          - composer require --no-update "drupal/core-recommended:^11" "drupal/core-composer-scaffold:^11" "drupal/core-project-message:^11"
+          - composer require --no-update --dev "drupal/core-dev:^11"
+          - composer update --prefer-dist --no-progress
           - vendor/bin/phpunit --testsuite=unit --colors=never
 
     # ---- kernel ----------------------------------------------------------
