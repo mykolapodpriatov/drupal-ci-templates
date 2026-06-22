@@ -87,11 +87,13 @@ phpstan:
     - composer require --no-update --dev "drupal/core-dev:${DRUPAL_VERSION}"
     - composer update --prefer-dist --no-progress
   script:
-    - bash scripts/run-phpstan.sh
+    - PHPSTAN_REPORT=phpstan-report.xml bash scripts/run-phpstan.sh
   artifacts:
-    when: on_failure
+    when: always
     paths:
       - phpstan-report.xml
+    reports:
+      junit: phpstan-report.xml
     expire_in: 1 week
 
 # ---------------------------------------------------------------------------
