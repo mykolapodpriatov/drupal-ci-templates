@@ -53,6 +53,7 @@ YAMLLINT_PATHS=(
   github-actions
   gitlab-ci
   bitbucket-pipelines
+  circleci
 )
 
 # --- yamllint --------------------------------------------------------------

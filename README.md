@@ -30,6 +30,9 @@ gitlab-ci/
 bitbucket-pipelines/
   bitbucket-pipelines.yml
 
+circleci/
+  config.yml             # full pipeline mirroring ci-full.yml (copy to .circleci/config.yml)
+
 scripts/
   setup-drupal.sh        # bootstraps a Drupal install for kernel/functional
   run-phpstan.sh         # phpstan with memory limit + neon resolution
@@ -60,7 +63,8 @@ For a typical `drupal/recommended-project`-based repo:
 6. Push a branch and watch the matrix run.
 
 For GitLab and Bitbucket the same idea applies — copy the file to the repo
-root, adjust paths.
+root, adjust paths. For CircleCI, copy `circleci/config.yml` to
+`.circleci/config.yml` and adjust paths the same way.
 
 ## Matrix overview
 

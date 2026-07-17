@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `scripts/lint-all.sh` runs the meta-CI checks (yamllint, actionlint,
   shellcheck) locally with the same flags and paths as CI; missing tools are
   skipped with a notice instead of failing.
+- CircleCI template at `circleci/config.yml` mirroring `ci-full.yml`
+  (lint / phpstan / unit / kernel / functional / deploy) with a MySQL service
+  and the PHP 8.2 x Drupal ^10.3 / PHP 8.3 x Drupal ^11 pairing.
 
 ### Changed
 - Matrix excludes the impossible PHP 8.2 × Drupal `^11` pairing across the
