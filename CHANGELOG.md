@@ -7,9 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `scripts/lint-all.sh` runs the meta-CI checks (yamllint, actionlint,
+  shellcheck) locally with the same flags and paths as CI; missing tools are
+  skipped with a notice instead of failing.
+
 ### Changed
 - Matrix excludes the impossible PHP 8.2 × Drupal `^11` pairing across the
   GitHub Actions, GitLab CI, and Bitbucket templates.
+- `.github/workflows/meta.yml` now delegates linting to `scripts/lint-all.sh`
+  so CI and local runs share a single source of truth.
 
 ## [1.0.0] - 2026-06-22
 
