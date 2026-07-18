@@ -43,6 +43,9 @@ scripts/
   run-phpunit.sh         # phpunit with memory limit + optional --testsuite/COVERAGE
   wait-for-mysql.sh      # poll mysqladmin until the service is ready
 
+pre-commit/
+  .pre-commit-config.yaml # local PHPCS + PHPStan + yamllint hooks on git commit
+
 phpstan.neon.dist        # level 8 baseline with mglaman/phpstan-drupal
 phpcs.xml.dist           # Drupal + DrupalPractice, sensible excludes
 phpunit.xml.dist         # three testsuites: unit / kernel / functional
@@ -68,7 +71,32 @@ For a typical `drupal/recommended-project`-based repo:
 
 For GitLab and Bitbucket the same idea applies — copy the file to the repo
 root, adjust paths. For CircleCI, copy `circleci/config.yml` to
-`.circleci/config.yml` and adjust paths the same way.
+`.circleci/config.yml` and adjust paths the same way. For Azure DevOps, copy
+`azure-pipelines/azure-pipelines.yml` to `azure-pipelines.yml` at the repo root
+and point your pipeline at it.
+
+## Local pre-commit hooks
+
+To catch lint and static-analysis failures *before* they reach CI, copy
+`pre-commit/.pre-commit-config.yaml` to your repo root and install the
+[pre-commit](https://pre-commit.com/) framework once per clone:
+
+```
+pip install pre-commit        # or: pipx install pre-commit
+pre-commit install
+```
+
+Every `git commit` then runs PHPCS, PHPStan, and yamllint against the staged
+files. Run them across the whole tree on demand with:
+
+```
+pre-commit run --all-files
+```
+
+The hooks are `repo: local`: they invoke the `scripts/run-phpcs.sh` /
+`scripts/run-phpstan.sh` wrappers and the shipped `phpcs.xml.dist` /
+`phpstan.neon.dist` rulesets already in your project, so local and CI checks
+stay identical.
 
 ## Matrix overview
 

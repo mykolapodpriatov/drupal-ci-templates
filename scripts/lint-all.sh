@@ -55,6 +55,7 @@ YAMLLINT_PATHS=(
   bitbucket-pipelines
   circleci
   azure-pipelines
+  pre-commit
 )
 
 # --- yamllint --------------------------------------------------------------

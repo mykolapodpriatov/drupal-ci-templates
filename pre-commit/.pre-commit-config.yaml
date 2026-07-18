@@ -1,0 +1,46 @@
+---
+# Pre-commit hook config for Drupal 10/11 repos — the local half of the
+# "fresh repo to green" path, so contributors hit PHPCS / PHPStan / yamllint
+# failures on `git commit` instead of discovering them in CI after a push.
+#
+# Copy this file to .pre-commit-config.yaml at your repo root, then install the
+# framework once per clone:
+#   pip install pre-commit        # or: pipx install pre-commit
+#   pre-commit install
+#
+# From then on every `git commit` runs the hooks below against the staged
+# files. Run them against the whole tree on demand with:
+#   pre-commit run --all-files
+#
+# These are `repo: local` hooks: they call the wrapper scripts and binaries
+# already installed in your project (via `composer require --dev`) and the
+# shipped phpcs.xml.dist / phpstan.neon.dist rulesets — nothing is fetched from
+# a remote hook repository. run-phpcs.sh / run-phpstan.sh resolve the non-.dist
+# ruleset first and fall back to the shipped .dist, matching what CI runs.
+
+minimum_pre_commit_version: "3.0.0"
+
+repos:
+  - repo: local
+    hooks:
+      - id: phpcs
+        name: PHPCS (Drupal + DrupalPractice)
+        entry: ./scripts/run-phpcs.sh
+        language: script
+        files: '\.(php|module|inc|install|profile|theme)$'
+        pass_filenames: false
+        require_serial: true
+
+      - id: phpstan
+        name: PHPStan (level 8 + phpstan-drupal)
+        entry: ./scripts/run-phpstan.sh
+        language: script
+        files: '\.(php|module|inc|install|profile|theme)$'
+        pass_filenames: false
+        require_serial: true
+
+      - id: yamllint
+        name: yamllint
+        entry: yamllint -c .yamllint.yml
+        language: system
+        types: [yaml]
