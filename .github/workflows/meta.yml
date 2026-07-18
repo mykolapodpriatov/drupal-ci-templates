@@ -1,6 +1,10 @@
 ---
 # Meta-CI: lint THIS repository's own YAML / workflows / shell so we don't
 # ship broken templates.
+#
+# The actual linter invocations (tools, flags, paths) live in
+# scripts/lint-all.sh. This workflow only installs the tools and then runs
+# that script, so CI and a local `./scripts/lint-all.sh` can't drift apart.
 
 name: Meta CI
 
@@ -13,40 +17,23 @@ permissions:
   contents: read
 
 jobs:
-  yamllint:
-    name: yamllint
+  lint:
+    name: lint (yamllint + actionlint + shellcheck)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: ibiqlik/action-yamllint@v3
-        with:
-          config_file: .yamllint.yml
-          file_or_dir: >-
-            .github/workflows
-            github-actions
-            gitlab-ci
-            bitbucket-pipelines
 
-  actionlint:
-    name: actionlint
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install actionlint
+      - name: Install yamllint
+        run: pipx install yamllint
+
+      - name: Install actionlint (pinned)
         run: |
           bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash) 1.7.1
-          ./actionlint -version
-      - name: Lint workflows under .github/workflows
-        run: ./actionlint -color .github/workflows/*.yml
-      - name: Lint distributed templates under github-actions/
-        run: ./actionlint -color -shellcheck= github-actions/*.yml
+          sudo mv ./actionlint /usr/local/bin/actionlint
+          actionlint -version
 
-  shellcheck:
-    name: shellcheck
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
       - name: Install shellcheck
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends shellcheck
-      - name: Lint shell scripts
-        run: shellcheck scripts/*.sh
+
+      - name: Run all linters
+        run: ./scripts/lint-all.sh

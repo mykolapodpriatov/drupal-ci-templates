@@ -16,26 +16,33 @@ a collection of CI templates, not a framework — so the bar for changes is
 
 ## Local checks before opening a PR
 
-Make sure the helpers and configs at least parse:
+The meta workflow (`.github/workflows/meta.yml`) lints this repo's own YAML,
+workflows, and shell scripts. It delegates the actual linting to
+`scripts/lint-all.sh`, so you can reproduce a CI lint failure with a single
+command:
 
 ```sh
-# YAML
-yamllint -c .yamllint.yml github-actions gitlab-ci bitbucket-pipelines
+./scripts/lint-all.sh
+```
 
-# GitHub Actions workflows
-actionlint github-actions/*.yml .github/workflows/*.yml
+That runs `yamllint`, `actionlint`, and `shellcheck` with exactly the flags and
+paths CI uses. Any tool you don't have installed is skipped with a yellow
+notice rather than failing the run, so you can install just what you need:
 
-# Shell helpers
-shellcheck scripts/*.sh
+- `yamllint` — `pip install yamllint` (or `pipx install yamllint`)
+- `actionlint` — see <https://github.com/rhysd/actionlint>
+- `shellcheck` — your distro's package manager
 
-# PHP configs — sanity-check with a real Drupal repo if you can
+Because CI and this script share the same source of truth, a clean local run is
+a good predictor of a green PR.
+
+The PHP tool configs can't be exercised without a real Drupal tree — sanity
+check them against one if you can:
+
+```sh
 phpstan analyse -c phpstan.neon.dist --memory-limit=1G
 phpcs --standard=phpcs.xml.dist .
 ```
-
-If you don't have these tools locally, install them via your distro's package
-manager or via composer/pip — the meta workflow uses the same binaries, so a
-clean local run is a good predictor of a green PR.
 
 ## Branching and commits
 

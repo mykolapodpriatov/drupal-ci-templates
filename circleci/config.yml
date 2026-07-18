@@ -1,0 +1,333 @@
+---
+# CircleCI equivalent of github-actions/ci-full.yml.
+#
+# Mirrors the same stages — lint -> phpstan -> unit -> kernel -> functional
+# -> deploy — using CircleCI's reusable commands and parameterised jobs in
+# place of GitHub's matrix. The valid PHP x Drupal pairs are enumerated
+# explicitly in the workflow (like the Bitbucket template): Drupal 11 requires
+# PHP 8.3+, so PHP 8.2 is only paired with Drupal ^10.3 and ^11 only with
+# PHP 8.3 — the PHP 8.2 x ^11 pair can never resolve and is never scheduled.
+#
+# Copy this file to .circleci/config.yml in your project, then:
+#   - Adjust DRUPAL_WEB_ROOT if your docroot is not "web/".
+#   - Adjust the test paths in phpunit.xml.dist.
+#   - Pick one of the deploy patterns at the bottom and delete the rest.
+
+version: 2.1
+
+# ---------------------------------------------------------------------------
+# Reusable commands shared between jobs.
+# ---------------------------------------------------------------------------
+commands:
+  pin-and-install:
+    description: "Pin Drupal core to a version, then install dependencies."
+    parameters:
+      drupal-version:
+        type: string
+    steps:
+      - run:
+          name: "Pin Drupal core to << parameters.drupal-version >>"
+          command: |
+            composer require --no-update \
+              "drupal/core-recommended:<< parameters.drupal-version >>" \
+              "drupal/core-composer-scaffold:<< parameters.drupal-version >>" \
+              "drupal/core-project-message:<< parameters.drupal-version >>"
+            composer require --no-update --dev \
+              "drupal/core-dev:<< parameters.drupal-version >>"
+      - run:
+          name: Install dependencies
+          command: composer update --prefer-dist --no-progress
+
+  wait-for-db:
+    description: "Install a MySQL client and block until the DB service answers."
+    steps:
+      - run:
+          name: Install MySQL client
+          command: sudo apt-get update && sudo apt-get install -y --no-install-recommends default-mysql-client
+      - run:
+          name: Wait for MySQL
+          command: ./scripts/wait-for-mysql.sh 127.0.0.1 3306
+
+# ---------------------------------------------------------------------------
+# Jobs. Each is parameterised by PHP version (and, where relevant, Drupal
+# version) so the workflow can schedule only the valid combinations.
+# The cimg/php images ship composer plus gd, mbstring, intl, pdo_mysql, ...
+# ---------------------------------------------------------------------------
+jobs:
+  # Stage 1: lint — fast, runs once per PHP version (Drupal version irrelevant).
+  lint:
+    parameters:
+      php-version:
+        type: string
+    docker:
+      - image: cimg/php:<< parameters.php-version >>
+    working_directory: ~/repo
+    environment:
+      COMPOSER_NO_INTERACTION: "1"
+      COMPOSER_MEMORY_LIMIT: "-1"
+      DRUPAL_WEB_ROOT: web
+    steps:
+      - checkout
+      - run:
+          name: Install dependencies
+          command: composer install --prefer-dist --no-progress
+      - run:
+          name: PHPCS (Drupal + DrupalPractice)
+          command: ./scripts/run-phpcs.sh
+
+  # Stage 2: static analysis — PHPStan + deprecation rules.
+  phpstan:
+    parameters:
+      php-version:
+        type: string
+      drupal-version:
+        type: string
+    docker:
+      - image: cimg/php:<< parameters.php-version >>
+    working_directory: ~/repo
+    environment:
+      COMPOSER_NO_INTERACTION: "1"
+      COMPOSER_MEMORY_LIMIT: "-1"
+      DRUPAL_WEB_ROOT: web
+    steps:
+      - checkout
+      - pin-and-install:
+          drupal-version: << parameters.drupal-version >>
+      - run:
+          name: PHPStan (level 8 + phpstan-drupal)
+          command: ./scripts/run-phpstan.sh
+
+  # Stage 3: unit tests.
+  unit:
+    parameters:
+      php-version:
+        type: string
+      drupal-version:
+        type: string
+    docker:
+      - image: cimg/php:<< parameters.php-version >>
+    working_directory: ~/repo
+    environment:
+      COMPOSER_NO_INTERACTION: "1"
+      COMPOSER_MEMORY_LIMIT: "-1"
+      DRUPAL_WEB_ROOT: web
+    steps:
+      - checkout
+      - pin-and-install:
+          drupal-version: << parameters.drupal-version >>
+      - run:
+          name: Run unit suite
+          command: vendor/bin/phpunit --testsuite=unit --colors=always
+
+  # Stage 4: kernel tests — need MySQL but no web server.
+  kernel:
+    parameters:
+      php-version:
+        type: string
+      drupal-version:
+        type: string
+    docker:
+      - image: cimg/php:<< parameters.php-version >>
+      - image: mariadb:10.11
+        environment:
+          MARIADB_ROOT_PASSWORD: root
+          MARIADB_DATABASE: drupal
+    working_directory: ~/repo
+    environment:
+      COMPOSER_NO_INTERACTION: "1"
+      COMPOSER_MEMORY_LIMIT: "-1"
+      DRUPAL_WEB_ROOT: web
+      SIMPLETEST_DB: "mysql://root:root@127.0.0.1:3306/drupal"
+    steps:
+      - checkout
+      - pin-and-install:
+          drupal-version: << parameters.drupal-version >>
+      - wait-for-db
+      - run:
+          name: Run kernel suite
+          command: vendor/bin/phpunit --testsuite=kernel --colors=always
+
+  # Stage 5: functional tests — full Drupal install + Selenium (standalone-chrome).
+  functional:
+    parameters:
+      php-version:
+        type: string
+      drupal-version:
+        type: string
+    docker:
+      - image: cimg/php:<< parameters.php-version >>
+      - image: mariadb:10.11
+        environment:
+          MARIADB_ROOT_PASSWORD: root
+          MARIADB_DATABASE: drupal
+      - image: selenium/standalone-chrome:124.0
+    working_directory: ~/repo
+    environment:
+      COMPOSER_NO_INTERACTION: "1"
+      COMPOSER_MEMORY_LIMIT: "-1"
+      DRUPAL_WEB_ROOT: web
+      SIMPLETEST_DB: "mysql://root:root@127.0.0.1:3306/drupal"
+      SIMPLETEST_BASE_URL: "http://127.0.0.1:8080"
+      MINK_DRIVER_ARGS_WEBDRIVER: '["chrome", {"browserName":"chrome","goog:chromeOptions":{"args":["--disable-gpu","--headless","--no-sandbox"]}}, "http://127.0.0.1:4444/wd/hub"]'
+      BROWSERTEST_OUTPUT_DIRECTORY: /tmp/browser-output
+    steps:
+      - checkout
+      - pin-and-install:
+          drupal-version: << parameters.drupal-version >>
+      - wait-for-db
+      - run:
+          name: Bootstrap Drupal
+          command: ./scripts/setup-drupal.sh
+      - run:
+          name: Start built-in web server
+          command: |
+            mkdir -p /tmp/browser-output
+            php -S 127.0.0.1:8080 -t "${DRUPAL_WEB_ROOT}"
+          background: true
+      - run:
+          name: Wait for web server
+          command: |
+            for _ in $(seq 1 10); do
+              if curl -sf http://127.0.0.1:8080 > /dev/null; then
+                exit 0
+              fi
+              sleep 1
+            done
+            echo "built-in web server did not come up on :8080" >&2
+            exit 1
+      - run:
+          name: Run functional suite
+          command: vendor/bin/phpunit --testsuite=functional --colors=always
+      - store_artifacts:
+          path: /tmp/browser-output
+          destination: browser-output
+
+  # Stage 6: deploy — main branch only. Pick ONE pattern below, delete others.
+  deploy:
+    docker:
+      - image: cimg/php:8.3
+    working_directory: ~/repo
+    environment:
+      COMPOSER_NO_INTERACTION: "1"
+      COMPOSER_MEMORY_LIMIT: "-1"
+    steps:
+      - checkout
+      - run:
+          name: Build production artefact
+          command: composer install --no-dev --optimize-autoloader --prefer-dist
+
+      # --- Pattern A: rsync over SSH ---------------------------------------
+      # Add DEPLOY_SSH_KEY / DEPLOY_HOST / DEPLOY_USER / DEPLOY_PATH as project
+      # environment variables (or via a context), then uncomment:
+      # - run:
+      #     name: rsync to staging
+      #     command: |
+      #       mkdir -p ~/.ssh
+      #       echo "$DEPLOY_SSH_KEY" > ~/.ssh/id_ed25519
+      #       chmod 600 ~/.ssh/id_ed25519
+      #       ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+      #       rsync -az --delete \
+      #         --exclude='.git/' --exclude='tests/' --exclude='*.md' \
+      #         ./ "${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PATH}/"
+
+      # --- Pattern B: Pantheon Terminus ------------------------------------
+      # Store the machine token in a TERMINUS_TOKEN project env var:
+      # - run:
+      #     name: Deploy via Terminus
+      #     command: |
+      #       curl -fsSL https://github.com/pantheon-systems/terminus/releases/latest/download/terminus.phar -o /usr/local/bin/terminus
+      #       chmod +x /usr/local/bin/terminus
+      #       terminus auth:login --machine-token="$TERMINUS_TOKEN"
+      #       terminus build:env:push my-site.dev --yes
+      #       terminus env:deploy my-site.test --note="Auto-deploy from $CIRCLE_SHA1"
+
+      # --- Pattern C: Acquia BLT -------------------------------------------
+      # - run:
+      #     name: Deploy via BLT
+      #     command: |
+      #       vendor/bin/blt artifact:deploy \
+      #         --branch="master-build" \
+      #         --commit-msg="Auto-deploy $CIRCLE_SHA1"
+
+      # --- Pattern D: Generic Composer artefact ----------------------------
+      - run:
+          name: Placeholder deploy
+          command: |
+            echo "Replace this step with one of the patterns above."
+            echo "Commit SHA: ${CIRCLE_SHA1}"
+
+# ---------------------------------------------------------------------------
+# Workflow: wires stage dependencies and schedules only the valid PHP x Drupal
+# pairs (8.2 x ^10.3 and 8.3 x ^11). The PHP 8.2 x ^11 pair is never listed.
+# ---------------------------------------------------------------------------
+workflows:
+  ci:
+    jobs:
+      - lint:
+          name: lint-php8.2
+          php-version: "8.2"
+      - lint:
+          name: lint-php8.3
+          php-version: "8.3"
+
+      - phpstan:
+          name: phpstan-php8.2-drupal10
+          php-version: "8.2"
+          drupal-version: "^10.3"
+          requires:
+            - lint-php8.2
+      - phpstan:
+          name: phpstan-php8.3-drupal11
+          php-version: "8.3"
+          drupal-version: "^11"
+          requires:
+            - lint-php8.3
+
+      - unit:
+          name: unit-php8.2-drupal10
+          php-version: "8.2"
+          drupal-version: "^10.3"
+          requires:
+            - lint-php8.2
+      - unit:
+          name: unit-php8.3-drupal11
+          php-version: "8.3"
+          drupal-version: "^11"
+          requires:
+            - lint-php8.3
+
+      - kernel:
+          name: kernel-php8.2-drupal10
+          php-version: "8.2"
+          drupal-version: "^10.3"
+          requires:
+            - unit-php8.2-drupal10
+      - kernel:
+          name: kernel-php8.3-drupal11
+          php-version: "8.3"
+          drupal-version: "^11"
+          requires:
+            - unit-php8.3-drupal11
+
+      - functional:
+          name: functional-php8.2-drupal10
+          php-version: "8.2"
+          drupal-version: "^10.3"
+          requires:
+            - kernel-php8.2-drupal10
+      - functional:
+          name: functional-php8.3-drupal11
+          php-version: "8.3"
+          drupal-version: "^11"
+          requires:
+            - kernel-php8.3-drupal11
+
+      - deploy:
+          requires:
+            - phpstan-php8.2-drupal10
+            - phpstan-php8.3-drupal11
+            - functional-php8.2-drupal10
+            - functional-php8.3-drupal11
+          filters:
+            branches:
+              only: main
