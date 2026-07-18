@@ -54,6 +54,8 @@ YAMLLINT_PATHS=(
   gitlab-ci
   bitbucket-pipelines
   circleci
+  azure-pipelines
+  pre-commit
 )
 
 # --- yamllint --------------------------------------------------------------
