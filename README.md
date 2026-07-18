@@ -40,6 +40,7 @@ scripts/
   setup-drupal.sh        # bootstraps a Drupal install for kernel/functional
   run-phpstan.sh         # phpstan with memory limit + neon resolution
   run-phpcs.sh           # phpcs against Drupal + DrupalPractice
+  run-phpunit.sh         # phpunit with memory limit + optional --testsuite/COVERAGE
   wait-for-mysql.sh      # poll mysqladmin until the service is ready
 
 phpstan.neon.dist        # level 8 baseline with mglaman/phpstan-drupal
