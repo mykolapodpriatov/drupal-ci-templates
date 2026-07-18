@@ -33,6 +33,9 @@ bitbucket-pipelines/
 circleci/
   config.yml             # full pipeline mirroring ci-full.yml (copy to .circleci/config.yml)
 
+azure-pipelines/
+  azure-pipelines.yml    # full pipeline mirroring ci-full.yml (copy to repo root)
+
 scripts/
   setup-drupal.sh        # bootstraps a Drupal install for kernel/functional
   run-phpstan.sh         # phpstan with memory limit + neon resolution

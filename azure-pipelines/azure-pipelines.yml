@@ -1,0 +1,392 @@
+---
+# Azure DevOps Pipelines equivalent of github-actions/ci-full.yml.
+#
+# Mirrors the same stages — lint -> static -> unit -> kernel -> functional ->
+# security -> deploy — using Azure's stage/job model and a `strategy: matrix`
+# in place of GitHub's build matrix. The valid PHP x Drupal pairs are
+# enumerated explicitly: Drupal 11 requires PHP 8.3+, so PHP 8.2 is only paired
+# with Drupal ^10.3 and ^11 only with PHP 8.3 — the PHP 8.2 x ^11 pair can
+# never resolve and is simply never added to the matrix.
+#
+# Copy this file to azure-pipelines.yml at your repo root, then:
+#   - Adjust DRUPAL_WEB_ROOT if your docroot is not "web/".
+#   - Adjust the test paths in phpunit.xml.dist.
+#   - Pick one of the deploy patterns at the bottom and delete the rest.
+#
+# PHP is selected from the versions preinstalled on the Microsoft-hosted ubuntu
+# image via `update-alternatives`; MariaDB and Selenium run as service
+# containers reached over mapped localhost ports.
+
+trigger:
+  branches:
+    include:
+      - main
+      - develop
+
+pr:
+  branches:
+    include:
+      - main
+      - develop
+
+variables:
+  DRUPAL_WEB_ROOT: web
+  COMPOSER_NO_INTERACTION: "1"
+  COMPOSER_MEMORY_LIMIT: "-1"
+  SIMPLETEST_BASE_URL: "http://127.0.0.1:8080"
+
+resources:
+  containers:
+    - container: mariadb
+      image: mariadb:10.11
+      ports:
+        - 3306:3306
+      env:
+        MARIADB_ROOT_PASSWORD: root
+        MARIADB_DATABASE: drupal
+      options: >-
+        --health-cmd "mariadb-admin ping -h 127.0.0.1 -uroot -proot"
+        --health-interval 5s
+        --health-timeout 3s
+        --health-retries 20
+    - container: chrome
+      image: selenium/standalone-chrome:124.0
+      ports:
+        - 4444:4444
+      options: --shm-size=2g
+
+stages:
+  # -------------------------------------------------------------------------
+  # Stage 1: lint — fast, runs once per PHP version (Drupal version irrelevant)
+  # -------------------------------------------------------------------------
+  - stage: lint
+    displayName: Lint
+    jobs:
+      - job: lint
+        displayName: Lint
+        pool:
+          vmImage: ubuntu-latest
+        strategy:
+          matrix:
+            php82:
+              PHP_VERSION: "8.2"
+            php83:
+              PHP_VERSION: "8.3"
+        steps:
+          - script: |
+              sudo update-alternatives --set php /usr/bin/php$(PHP_VERSION)
+              php -v
+            displayName: "Select PHP $(PHP_VERSION)"
+
+          - script: composer install --no-progress --prefer-dist
+            displayName: Install dependencies
+
+          - script: ./scripts/run-phpcs.sh
+            displayName: PHPCS (Drupal + DrupalPractice)
+
+          # Advisory / non-gating: `|| true` keeps Twig CS findings informational.
+          # Drop the `|| true` to make Twig style violations fail the build.
+          - script: vendor/bin/twigcs "$(DRUPAL_WEB_ROOT)/modules/custom" "$(DRUPAL_WEB_ROOT)/themes/custom" || true
+            displayName: Twig CS (advisory)
+
+          - script: |
+              pipx install yamllint
+              yamllint -c .yamllint.yml .
+            displayName: yamllint
+
+  # -------------------------------------------------------------------------
+  # Stage 2: static analysis — PHPStan + deprecation rules
+  # -------------------------------------------------------------------------
+  - stage: static
+    displayName: Static analysis
+    dependsOn: lint
+    jobs:
+      - job: phpstan
+        displayName: PHPStan
+        pool:
+          vmImage: ubuntu-latest
+        strategy:
+          matrix:
+            php82_drupal103:
+              PHP_VERSION: "8.2"
+              DRUPAL_VERSION: "^10.3"
+            php83_drupal103:
+              PHP_VERSION: "8.3"
+              DRUPAL_VERSION: "^10.3"
+            php83_drupal11:
+              PHP_VERSION: "8.3"
+              DRUPAL_VERSION: "^11"
+        steps:
+          - script: |
+              sudo update-alternatives --set php /usr/bin/php$(PHP_VERSION)
+              php -v
+            displayName: "Select PHP $(PHP_VERSION)"
+
+          - script: |
+              composer require --no-update \
+                "drupal/core-recommended:$(DRUPAL_VERSION)" \
+                "drupal/core-composer-scaffold:$(DRUPAL_VERSION)" \
+                "drupal/core-project-message:$(DRUPAL_VERSION)"
+              composer require --no-update --dev \
+                "drupal/core-dev:$(DRUPAL_VERSION)"
+            displayName: "Pin Drupal core to $(DRUPAL_VERSION)"
+
+          - script: composer update --prefer-dist --no-progress
+            displayName: Install dependencies
+
+          - script: ./scripts/run-phpstan.sh
+            displayName: PHPStan (level 8 + phpstan-drupal)
+
+          # Advisory / non-gating: `|| true` keeps PHPMD findings informational.
+          # Drop the `|| true` to make mess-detector findings fail the build.
+          - script: vendor/bin/phpmd "$(DRUPAL_WEB_ROOT)/modules/custom" text cleancode,codesize,unusedcode || true
+            displayName: PHPMD (advisory)
+
+  # -------------------------------------------------------------------------
+  # Stage 3: unit tests
+  # -------------------------------------------------------------------------
+  - stage: unit
+    displayName: Unit tests
+    dependsOn: lint
+    jobs:
+      - job: unit
+        displayName: Unit
+        pool:
+          vmImage: ubuntu-latest
+        strategy:
+          matrix:
+            php82_drupal103:
+              PHP_VERSION: "8.2"
+              DRUPAL_VERSION: "^10.3"
+            php83_drupal103:
+              PHP_VERSION: "8.3"
+              DRUPAL_VERSION: "^10.3"
+            php83_drupal11:
+              PHP_VERSION: "8.3"
+              DRUPAL_VERSION: "^11"
+        steps:
+          - script: |
+              sudo update-alternatives --set php /usr/bin/php$(PHP_VERSION)
+              php -v
+            displayName: "Select PHP $(PHP_VERSION)"
+
+          - script: |
+              composer require --no-update \
+                "drupal/core-recommended:$(DRUPAL_VERSION)" \
+                "drupal/core-composer-scaffold:$(DRUPAL_VERSION)" \
+                "drupal/core-project-message:$(DRUPAL_VERSION)"
+              composer require --no-update --dev \
+                "drupal/core-dev:$(DRUPAL_VERSION)"
+            displayName: "Pin Drupal core to $(DRUPAL_VERSION)"
+
+          - script: composer update --prefer-dist --no-progress
+            displayName: Install dependencies
+
+          - script: vendor/bin/phpunit --testsuite=unit --colors=always
+            displayName: Run unit suite
+
+  # -------------------------------------------------------------------------
+  # Stage 4: kernel tests — need MariaDB but no web server
+  # -------------------------------------------------------------------------
+  - stage: kernel
+    displayName: Kernel tests
+    dependsOn: unit
+    jobs:
+      - job: kernel
+        displayName: Kernel
+        pool:
+          vmImage: ubuntu-latest
+        strategy:
+          matrix:
+            php82_drupal103:
+              PHP_VERSION: "8.2"
+              DRUPAL_VERSION: "^10.3"
+            php83_drupal103:
+              PHP_VERSION: "8.3"
+              DRUPAL_VERSION: "^10.3"
+            php83_drupal11:
+              PHP_VERSION: "8.3"
+              DRUPAL_VERSION: "^11"
+        services:
+          mariadb: mariadb
+        variables:
+          SIMPLETEST_DB: "mysql://root:root@127.0.0.1:3306/drupal"
+        steps:
+          - script: |
+              sudo update-alternatives --set php /usr/bin/php$(PHP_VERSION)
+              php -v
+            displayName: "Select PHP $(PHP_VERSION)"
+
+          - script: |
+              composer require --no-update \
+                "drupal/core-recommended:$(DRUPAL_VERSION)" \
+                "drupal/core-composer-scaffold:$(DRUPAL_VERSION)" \
+                "drupal/core-project-message:$(DRUPAL_VERSION)"
+              composer require --no-update --dev \
+                "drupal/core-dev:$(DRUPAL_VERSION)"
+            displayName: "Pin Drupal core to $(DRUPAL_VERSION)"
+
+          - script: composer update --prefer-dist --no-progress
+            displayName: Install dependencies
+
+          - script: ./scripts/wait-for-mysql.sh 127.0.0.1 3306
+            displayName: Wait for MySQL
+
+          - script: vendor/bin/phpunit --testsuite=kernel --colors=always
+            displayName: Run kernel suite
+
+  # -------------------------------------------------------------------------
+  # Stage 5: functional tests — full Drupal install + Selenium (standalone-chrome)
+  # -------------------------------------------------------------------------
+  - stage: functional
+    displayName: Functional tests
+    dependsOn: kernel
+    jobs:
+      - job: functional
+        displayName: Functional
+        pool:
+          vmImage: ubuntu-latest
+        strategy:
+          matrix:
+            php82_drupal103:
+              PHP_VERSION: "8.2"
+              DRUPAL_VERSION: "^10.3"
+              LEG: "php82-drupal103"
+            php83_drupal103:
+              PHP_VERSION: "8.3"
+              DRUPAL_VERSION: "^10.3"
+              LEG: "php83-drupal103"
+            php83_drupal11:
+              PHP_VERSION: "8.3"
+              DRUPAL_VERSION: "^11"
+              LEG: "php83-drupal11"
+        services:
+          mariadb: mariadb
+          chrome: chrome
+        variables:
+          SIMPLETEST_DB: "mysql://root:root@127.0.0.1:3306/drupal"
+          MINK_DRIVER_ARGS_WEBDRIVER: '["chrome", {"browserName":"chrome","goog:chromeOptions":{"args":["--disable-gpu","--headless","--no-sandbox"]}}, "http://127.0.0.1:4444/wd/hub"]'
+          BROWSERTEST_OUTPUT_DIRECTORY: /tmp/browser-output
+        steps:
+          - script: |
+              sudo update-alternatives --set php /usr/bin/php$(PHP_VERSION)
+              php -v
+            displayName: "Select PHP $(PHP_VERSION)"
+
+          - script: |
+              composer require --no-update \
+                "drupal/core-recommended:$(DRUPAL_VERSION)" \
+                "drupal/core-composer-scaffold:$(DRUPAL_VERSION)" \
+                "drupal/core-project-message:$(DRUPAL_VERSION)"
+              composer require --no-update --dev \
+                "drupal/core-dev:$(DRUPAL_VERSION)"
+            displayName: "Pin Drupal core to $(DRUPAL_VERSION)"
+
+          - script: composer update --prefer-dist --no-progress
+            displayName: Install dependencies
+
+          - script: ./scripts/wait-for-mysql.sh 127.0.0.1 3306
+            displayName: Wait for MySQL
+
+          - script: ./scripts/setup-drupal.sh
+            displayName: Bootstrap Drupal
+
+          - script: |
+              mkdir -p /tmp/browser-output
+              php -S 127.0.0.1:8080 -t "$(DRUPAL_WEB_ROOT)" > /tmp/php-server.log 2>&1 &
+              sleep 2
+              curl -sf http://127.0.0.1:8080 > /dev/null
+            displayName: Start built-in web server
+
+          - script: vendor/bin/phpunit --testsuite=functional --colors=always
+            displayName: Run functional suite
+
+          - task: PublishPipelineArtifact@1
+            condition: failed()
+            displayName: Upload functional artefacts
+            inputs:
+              targetPath: /tmp/browser-output
+              artifact: "functional-output-$(LEG)"
+
+  # -------------------------------------------------------------------------
+  # Stage 6: security — composer audit
+  # -------------------------------------------------------------------------
+  - stage: security
+    displayName: Security audit
+    dependsOn: lint
+    jobs:
+      - job: security
+        displayName: Security audit
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - script: |
+              sudo update-alternatives --set php /usr/bin/php8.3
+              php -v
+            displayName: Select PHP 8.3
+
+          - script: composer install --no-progress --prefer-dist
+            displayName: Install dependencies
+
+          - script: composer audit --locked --no-dev
+            displayName: composer audit
+
+  # -------------------------------------------------------------------------
+  # Stage 7: deploy — main branch only. Pick ONE pattern below, delete others.
+  # -------------------------------------------------------------------------
+  - stage: deploy
+    displayName: Deploy (staging)
+    dependsOn:
+      - static
+      - functional
+      - security
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'), ne(variables['Build.Reason'], 'PullRequest'))
+    jobs:
+      - job: deploy
+        displayName: Deploy (staging)
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - script: |
+              sudo update-alternatives --set php /usr/bin/php8.3
+              php -v
+            displayName: Select PHP 8.3
+
+          - script: composer install --no-dev --optimize-autoloader --prefer-dist
+            displayName: Build production artefact
+
+          # --- Pattern A: rsync over SSH -----------------------------------
+          # Store DEPLOY_SSH_KEY / DEPLOY_HOST / DEPLOY_USER / DEPLOY_PATH as
+          # pipeline (secret) variables, then uncomment:
+          # - script: |
+          #     mkdir -p ~/.ssh
+          #     echo "$(DEPLOY_SSH_KEY)" > ~/.ssh/id_ed25519
+          #     chmod 600 ~/.ssh/id_ed25519
+          #     ssh-keyscan -H "$(DEPLOY_HOST)" >> ~/.ssh/known_hosts
+          #     rsync -az --delete \
+          #       --exclude='.git/' --exclude='tests/' --exclude='*.md' \
+          #       ./ "$(DEPLOY_USER)@$(DEPLOY_HOST):$(DEPLOY_PATH)/"
+          #   displayName: rsync to staging
+
+          # --- Pattern B: Pantheon Terminus --------------------------------
+          # Store the machine token in a TERMINUS_TOKEN secret variable:
+          # - script: |
+          #     curl -fsSL https://github.com/pantheon-systems/terminus/releases/latest/download/terminus.phar -o /usr/local/bin/terminus
+          #     chmod +x /usr/local/bin/terminus
+          #     terminus auth:login --machine-token="$(TERMINUS_TOKEN)"
+          #     terminus build:env:push my-site.dev --yes
+          #     terminus env:deploy my-site.test --note="Auto-deploy from $(Build.SourceVersion)"
+          #   displayName: Deploy via Terminus
+
+          # --- Pattern C: Acquia BLT ---------------------------------------
+          # - script: |
+          #     vendor/bin/blt artifact:deploy \
+          #       --branch="master-build" \
+          #       --commit-msg="Auto-deploy $(Build.SourceVersion)"
+          #   displayName: Deploy via BLT
+
+          # --- Pattern D: Generic Composer artefact ------------------------
+          - script: |
+              echo "Replace this step with one of the patterns above."
+              echo "Commit SHA: $(Build.SourceVersion)"
+            displayName: Placeholder deploy
