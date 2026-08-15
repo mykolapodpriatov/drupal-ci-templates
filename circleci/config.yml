@@ -2,11 +2,12 @@
 # CircleCI equivalent of github-actions/ci-full.yml.
 #
 # Mirrors the same stages — lint -> phpstan -> unit -> kernel -> functional
-# -> deploy — using CircleCI's reusable commands and parameterised jobs in
-# place of GitHub's matrix. The valid PHP x Drupal pairs are enumerated
-# explicitly in the workflow (like the Bitbucket template): Drupal 11 requires
-# PHP 8.3+, so PHP 8.2 is only paired with Drupal ^10.3 and ^11 only with
-# PHP 8.3 — the PHP 8.2 x ^11 pair can never resolve and is never scheduled.
+# -> security -> deploy — using CircleCI's reusable commands and
+# parameterised jobs in place of GitHub's matrix. The valid PHP x Drupal
+# pairs are enumerated explicitly in the workflow (like the Bitbucket
+# template): Drupal 11 requires PHP 8.3+, so PHP 8.2 is only paired with
+# Drupal ^10.3 and ^11 only with PHP 8.3 — the PHP 8.2 x ^11 pair can
+# never resolve and is never scheduled.
 #
 # Copy this file to .circleci/config.yml in your project, then:
 #   - Adjust DRUPAL_WEB_ROOT if your docroot is not "web/".
@@ -202,7 +203,32 @@ jobs:
           path: /tmp/browser-output
           destination: browser-output
 
-  # Stage 6: deploy — main branch only. Pick ONE pattern below, delete others.
+  # Stage 6: security — composer audit, matching github-actions/ci-full.yml.
+  security:
+    docker:
+      - image: cimg/php:8.3
+    working_directory: ~/repo
+    environment:
+      COMPOSER_NO_INTERACTION: "1"
+      COMPOSER_MEMORY_LIMIT: "-1"
+    steps:
+      - checkout
+      - restore_cache:
+          keys:
+            - composer-v1-{{ checksum "composer.lock" }}
+            - composer-v1-
+      - run:
+          name: Install dependencies
+          command: composer install --prefer-dist --no-progress
+      - save_cache:
+          key: composer-v1-{{ checksum "composer.lock" }}
+          paths:
+            - ~/.composer/cache
+      - run:
+          name: composer audit
+          command: composer audit --locked --no-dev
+
+  # Stage 7: deploy — main branch only. Pick ONE pattern below, delete others.
   deploy:
     docker:
       - image: cimg/php:8.3
@@ -322,12 +348,17 @@ workflows:
           requires:
             - kernel-php8.3-drupal11
 
+      - security:
+          requires:
+            - lint-php8.3
+
       - deploy:
           requires:
             - phpstan-php8.2-drupal10
             - phpstan-php8.3-drupal11
             - functional-php8.2-drupal10
             - functional-php8.3-drupal11
+            - security
           filters:
             branches:
               only: main
