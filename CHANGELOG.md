@@ -12,8 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   shellcheck) locally with the same flags and paths as CI; missing tools are
   skipped with a notice instead of failing.
 - CircleCI template at `circleci/config.yml` mirroring `ci-full.yml`
-  (lint / phpstan / unit / kernel / functional / deploy) with a MySQL service
-  and the PHP 8.2 x Drupal ^10.3 / PHP 8.3 x Drupal ^11 pairing.
+  (lint / phpstan / unit / kernel / functional / security / deploy) with a
+  MySQL service and the PHP 8.2 x Drupal ^10.3 / PHP 8.3 x Drupal ^11 pairing.
+- CircleCI `security` job runs `composer audit --locked --no-dev` on PHP 8.3
+  after lint and is required by `deploy`, matching the other provider
+  templates.
 
 ### Changed
 - Matrix excludes the impossible PHP 8.2 × Drupal `^11` pairing across the
