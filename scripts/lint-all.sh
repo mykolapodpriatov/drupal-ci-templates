@@ -86,6 +86,14 @@ else
   skip actionlint "https://github.com/rhysd/actionlint"
 fi
 
+# --- functional server -----------------------------------------------------
+# Not optional: a template that starts php -S without Drupal's router makes
+# every functional job look green while clean URLs 404.
+echo "==> functional server router"
+if ! bash scripts/check-functional-server.sh; then
+  status=1
+fi
+
 # --- shellcheck ------------------------------------------------------------
 if command -v shellcheck >/dev/null 2>&1; then
   echo "==> shellcheck"

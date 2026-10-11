@@ -140,7 +140,7 @@ functional:
     - bash scripts/wait-for-mysql.sh mariadb 3306
     - bash scripts/setup-drupal.sh
     - mkdir -p /tmp/browser-output
-    - php -S 127.0.0.1:8080 -t "${DRUPAL_WEB_ROOT}" > /tmp/php-server.log 2>&1 &
+    - php -S 127.0.0.1:8080 -t "${DRUPAL_WEB_ROOT}" "${DRUPAL_WEB_ROOT}/.ht.router.php" > /tmp/php-server.log 2>&1 &
     - sleep 2
     - vendor/bin/phpunit --testsuite=functional --colors=never --log-junit=junit-functional.xml
   artifacts:
