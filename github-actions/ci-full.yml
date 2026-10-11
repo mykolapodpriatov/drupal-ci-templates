@@ -282,7 +282,7 @@ jobs:
       - name: Start built-in web server
         run: |
           mkdir -p /tmp/browser-output
-          php -S 127.0.0.1:8080 -t ${{ env.DRUPAL_WEB_ROOT }} > /tmp/php-server.log 2>&1 &
+          php -S 127.0.0.1:8080 -t ${{ env.DRUPAL_WEB_ROOT }} ${{ env.DRUPAL_WEB_ROOT }}/.ht.router.php > /tmp/php-server.log 2>&1 &
           sleep 2
           curl -sf http://127.0.0.1:8080 > /dev/null
 

@@ -139,7 +139,7 @@ definitions:
           - mkdir -p /tmp/browser-output
           - bash scripts/wait-for-mysql.sh 127.0.0.1 3306
           - bash scripts/setup-drupal.sh
-          - php -S 127.0.0.1:8080 -t web > /tmp/php-server.log 2>&1 &
+          - php -S 127.0.0.1:8080 -t web web/.ht.router.php > /tmp/php-server.log 2>&1 &
           - sleep 2
           - vendor/bin/phpunit --testsuite=functional --colors=never
         artifacts:

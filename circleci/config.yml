@@ -183,7 +183,7 @@ jobs:
           name: Start built-in web server
           command: |
             mkdir -p /tmp/browser-output
-            php -S 127.0.0.1:8080 -t "${DRUPAL_WEB_ROOT}"
+            php -S 127.0.0.1:8080 -t "${DRUPAL_WEB_ROOT}" "${DRUPAL_WEB_ROOT}/.ht.router.php"
           background: true
       - run:
           name: Wait for web server
